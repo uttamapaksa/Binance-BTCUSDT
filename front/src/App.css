@@ -1,0 +1,50 @@
+#root {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  text-align: center;
+}
+
+.ratio {
+  display: flex;
+  gap: 4px;
+}
+
+.redDot {
+  width: 5px;
+  height: 5px;
+  background-color: red;
+  border-radius: 50%;
+}
+
+.greenDot {
+  width: 5px;
+  height: 5px;
+  background-color: green;
+  border-radius: 50%;
+}
+
+.container {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border: 1px solid gray;
+  width: 500px;
+  height: 500px;
+}
+
+.graph {
+  display: flex;
+  justify-content: space-evenly;
+  align-items: end;
+}
+
+.redBar {
+  width: 25%;
+  border: solid 1px red;
+}
+
+.greenBar {
+  width: 25%;
+  border: solid 1px green;
+}
