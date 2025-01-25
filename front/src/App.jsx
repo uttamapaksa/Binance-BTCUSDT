@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import "./App.css"
 
 function App() {
@@ -6,40 +6,37 @@ function App() {
   const [trades, setTrades] = useState([0, 0, 0, 0, 0, 0]);
   const [bars, seTBars] = useState([0, 0, 0, 0, 0, 0]);
   const [startTime, setStartTime] = useState('');
-  const tradesRef = useRef(trades);
 
+  // 그래프
   useEffect(() => {
-    tradesRef.current = trades;
+    seTBars(() => {
+      const [as, al, ss, sl, ws, wl] = [...trades];
+      const next = [
+        ((as * 300) / (as + al || 1) | 0), // 0으로 나누는 경우 방지
+        ((al * 300) / (as + al || 1) | 0),
+        ((ss * 300) / (ss + sl || 1) | 0),
+        ((sl * 300) / (ss + sl || 1) | 0),
+        ((ws * 300) / (ws + wl || 1) | 0),
+        ((wl * 300) / (ws + wl || 1) | 0),
+      ]
+      return next;
+    })
   }, [trades]);
 
   useEffect(() => {
     const socket = new WebSocket('ws://localhost:4000');
-
+    
+    // 웹소켓 연결
     socket.onopen = () => {
       console.log('WebSocket 연결 성공');
       setTrades([0, 0, 0, 0, 0, 0]);
       setStartTime(new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }))
     };
   
-    const interval = setInterval(() => {
-      seTBars(() => {
-        const [as, al, ss, sl, ws, wl] = tradesRef.current;
-        const next = [
-          ((as * 300) / (as + al || 1) | 0), // 0으로 나누는 경우 방지
-          ((al * 300) / (as + al || 1) | 0),
-          ((ss * 300) / (ss + sl || 1) | 0),
-          ((sl * 300) / (ss + sl || 1) | 0),
-          ((ws * 300) / (ws + wl || 1) | 0),
-          ((wl * 300) / (ws + wl || 1) | 0),
-        ]
-        return next;
-      })
-    }, 3000);
-
-    // 메시지 수신 시 처리
+    // 메시지 수신
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.flag === 1) {
+      if (data.flag === 1) { // watchFutureTrades()
         setTrades((prev) => {
           const next = [...prev];
           for (let i=0; i<6; i++) {
@@ -47,7 +44,7 @@ function App() {
           }
           return next;
         });
-      } else if (data.flag === 0) {
+      } else if (data.flag === 0) {  // fetchTakerLongShortRatio()
         setRatio({
           '5m': data.data['5m'],
           '15m': data.data['15m'],
@@ -58,15 +55,14 @@ function App() {
       }
     };
 
-    // 연결 에러 처리
+    // 연결 에러
     socket.onerror = (error) => {
       console.error('WebSocket Error:', error);
     };
 
-    // 컴포넌트 언마운트 시 WebSocket 종료
+    // 언마운트 시 웹소켓 종료
     return () => {
       socket.close();
-      clearInterval(interval);
     };
   }, []);
 
