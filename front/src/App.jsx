@@ -1,18 +1,48 @@
 import { useEffect, useState } from 'react';
 import "./App.css"
 
+const periods = ["30m", "1h", "4h", "12h", "1d"];
+
 function App() {
-  const [ratio, setRatio] = useState({'5m': 50, '15m': 50, '1h': 50, '4h': 50, '1d': 50});
+  const [ratio, setRatio] = useState(periods.reduce((acc, period) => { acc[period] = 50; return acc }, {}));
   const [trades, setTrades] = useState([0, 0, 0, 0, 0, 0]);
   const [bars, seTBars] = useState([0, 0, 0, 0, 0, 0]);
   const [startTime, setStartTime] = useState('');
+
+  const initStartTime = () => {
+    setStartTime(new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }));
+  };
+
+  // 데이터 조회
+  const getAggregationData = async (timeAgo) => {
+    try {
+      const response = await fetch(`http://localhost:4000/aggregation-data/${timeAgo}`, {
+        method: 'GET',
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTrades(data);
+        initStartTime();
+      } else {
+        if (response.status === 404) {
+          console.error('Data not found for this time period');
+        } else if (response.status === 500) {
+          console.error('Server error occurred');
+        } else {
+          console.error('Unexpected error:', response.status);
+        }
+      }
+    } catch (error) {
+      console.error("Request failed:", error);
+    }
+  };
 
   // 그래프
   useEffect(() => {
     seTBars(() => {
       const [as, al, ss, sl, ws, wl] = [...trades];
       const next = [
-        ((as * 300) / (as + al || 1) | 0), // 0으로 나누는 경우 방지
+        ((as * 300) / (as + al || 1) | 0),  // 0으로 나누는 경우 방지
         ((al * 300) / (as + al || 1) | 0),
         ((ss * 300) / (ss + sl || 1) | 0),
         ((sl * 300) / (ss + sl || 1) | 0),
@@ -30,13 +60,13 @@ function App() {
     socket.onopen = () => {
       console.log('WebSocket 연결 성공');
       setTrades([0, 0, 0, 0, 0, 0]);
-      setStartTime(new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }))
+      initStartTime()
     };
   
     // 메시지 수신
     socket.onmessage = (event) => {
       const data = JSON.parse(event.data);
-      if (data.flag === 1) { // watchFutureTrades()
+      if (data.flag === 1) {  // watchFutureTrades()
         setTrades((prev) => {
           const next = [...prev];
           for (let i=0; i<6; i++) {
@@ -45,13 +75,10 @@ function App() {
           return next;
         });
       } else if (data.flag === 0) {  // fetchTakerLongShortRatio()
-        setRatio({
-          '5m': data.data['5m'],
-          '15m': data.data['15m'],
-          '1h': data.data['1h'],
-          '4h': data.data['4h'],
-          '1d': data.data['1d'],
-        })
+        setRatio(periods.reduce((acc, period) => {
+          acc[period] = data.data[period];
+          return acc 
+        }, {}));
       }
     };
 
@@ -68,13 +95,14 @@ function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
+      <button onClick={()=>getAggregationData(60 * 60 * 1000)}>조회</button>
       <div style={{ marginLeft: 'auto', padding: '10px' }} >startTime: {startTime}</div>
       <div style={{ margin: '15px', display: 'flex', justifyContent: 'space-between'}}>
-        <div className='ratio'><span>5m: {ratio['5m']}%</span><span className={ratio['5m'] < 50 ? 'redDot' : 'greenDot'} /></div>
-        <div className='ratio'><span>15m: {ratio['15m']}%</span><span className={ratio['15m'] < 50 ? 'redDot' : 'greenDot'} /></div>
-        <div className='ratio'><span>1h: {ratio['1h']}%</span><span className={ratio['1h'] < 50 ? 'redDot' : 'greenDot'} /></div>
-        <div className='ratio'><span>4h: {ratio['4h']}%</span><span className={ratio['4h'] < 50 ? 'redDot' : 'greenDot'} /></div>
-        <div className='ratio'><span>1d: {ratio['1d']}%</span><span className={ratio['1d'] < 50 ? 'redDot' : 'greenDot'} /></div>
+        {periods.map((period) => (
+          <div key={period} className='ratio'>
+            <span>{period}: {ratio[period]}%</span><span className={ratio[period] < 50 ? 'redDot' : 'greenDot'} />
+          </div>
+        ))}
       </div>
       <div style={{display: 'flex'}}>
         <div className='container'>

@@ -3,6 +3,7 @@ require('dotenv').config({ path: '../.env' });
 const PORT = parseInt(process.env.PORT);
 const MONGODB_USERNAME = process.env.MONGODB_USERNAME;
 const MONGODB_PASSWORD = process.env.MONGODB_PASSWORD;
+const APP_NAME = process.env.APP_NAME;
 
 // Express
 const express = require('express');
@@ -16,7 +17,7 @@ const wss = new WebSocket.Server({ server });
 
 // MongoDB
 const mongoose = require('mongoose');
-const mongoURI = `mongodb+srv://${MONGODB_USERNAME}:${MONGODB_PASSWORD}@uttama-binance-btcusdt.miw8w.mongodb.net/?retryWrites=true&w=majority&appName=uttama-binance-btcusdt`;
+const mongoURI = `mongodb+srv://${MONGODB_USERNAME}:${MONGODB_PASSWORD}@${APP_NAME}.miw8w.mongodb.net/?retryWrites=true&w=majority&appName=${APP_NAME}`;
 mongoose.connect(mongoURI)  // DB connection
   .then(() => console.log('MongoDB Connected'))
   .catch((err) => console.log(err));
@@ -40,7 +41,7 @@ const clients = new Set();
 // Binance API
 const axios = require('axios');
 const url = 'https://fapi.binance.com/futures/data/takerlongshortRatio';
-const periods = ["5m", "15m", "1h", "4h", "1d"];
+const periods = ["30m", "1h", "4h", "12h", "1d"];
 
 // batch updated data
 let batchDataCount = 0;
@@ -107,7 +108,7 @@ const watchFutureTrades = async () => {
 };
 
 
-// 바이낸스 API로 기간별 Long/Short Ratio 조회
+// 바이낸스 API로 기간별 롱/숏 비율을 조회
 const fetchTakerLongShortRatio = async () => {
   const promises = periods.map((period) => {
     const params = {
@@ -139,9 +140,14 @@ const fetchTakerLongShortRatio = async () => {
 
 
 // 30초마다 거래 데이터를 MongoDB에 저장
-async function saveTradeData() {
+const saveTradeData = async () => {
   try {
-    const newTradeData = new TradeData({ data: [...batchDataMongo] });
+    const data = [...batchDataMongo];
+    if (batchDataMongo.reduce((a, c) => a + c, 0) === 0) {
+      console.log('데이터가 없으므로 삽입을 건너뜁니다.');
+      return;
+    }
+    const newTradeData = new TradeData({ data });
     await newTradeData.save();
     batchDataMongo = [0, 0, 0, 0, 0, 0];
     console.log('데이터가 성공적으로 삽입되었습니다!');
@@ -153,8 +159,8 @@ async function saveTradeData() {
 }
 
 
-// 15초마다 롱/숏 비율을 프론트엔드에 전송
-async function sendTakerLongShortRatio() {
+// 30초마다 롱/숏 비율을 프론트엔드에 전송
+const sendTakerLongShortRatio = async () =>{
   try {
     const data = await fetchTakerLongShortRatio();
     clients.forEach((client) => {
@@ -165,8 +171,45 @@ async function sendTakerLongShortRatio() {
   } catch (err) {
     console.error('데이터 전송 중 오류 발생:', err);
   } finally {
-    setTimeout(sendTakerLongShortRatio, 15000);
+    setTimeout(sendTakerLongShortRatio, 30000);
   }
+}
+
+
+// DB에 기간에 따른 거래 데이터 조회
+const getAggregationData = async (timeAgo) => {
+  try {
+    const result = await TradeData.aggregate([
+      {
+        $match: {
+          tradeTime: { $gte: new Date(Date.now() - parseInt(timeAgo)) }
+        }
+      },
+      {
+        $group: {
+          _id: null,  // 전체 문서를 그룹화
+          as: { $sum: { $arrayElemAt: ["$data", 0] } },
+          bs: { $sum: { $arrayElemAt: ["$data", 1] } },
+          cs: { $sum: { $arrayElemAt: ["$data", 2] } },
+          ds: { $sum: { $arrayElemAt: ["$data", 3] } },
+          es: { $sum: { $arrayElemAt: ["$data", 4] } },
+          fs: { $sum: { $arrayElemAt: ["$data", 5] } },
+        }
+      },
+      {
+        $project: {
+          _id: 0,  // `_id` 필드 제거
+          resultArray: ["$as", "$bs", "$cs", "$ds", "$es", "$fs"]
+        }
+      }
+    ]);
+    if (result.length > 0) {
+      console.log('데이터가 성공적으로 조회되었습니다!', result[0].resultArray);
+      return result[0].resultArray;
+    }
+  } catch (err) {
+    console.error('데이터 조회 오류:', err);
+  };
 }
 
 
@@ -187,6 +230,29 @@ wss.on('connection', (ws) => {
 });
 
 
+// 실행부
+
+// 지정된 포트에서 서버 실행
+server.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
+
+// 조회 API
+app.get('/aggregation-data/:timeAgo', async (req, res) => {
+  const { timeAgo } = req.params; 
+  try {
+    const data = await getAggregationData(timeAgo);
+    if (data) {
+      res.json(data);  // 성공적인 응답
+    } else {
+      res.status(404).json({ error: 'Data not found for this time period' });
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'An error occurred while fetching the data' });
+  }
+});
+
 // watchFutureTrades() 실행
 watchFutureTrades();
 
@@ -195,23 +261,3 @@ sendTakerLongShortRatio();
 
 // saveTradeData() 실행
 saveTradeData();
-
-// 지정된 포트에서 서버 실행
-server.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
-
-// // Express route example 
-// app.get('/', (req, res) => {
-//   res.send('WebSocket server is running!');
-// });
-
-const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-setInterval(async() => {
-  try {
-    const data = await TradeData.find({ tradeTime: { $gte: oneHourAgo } }, { _id: 0, data: 1 });
-    console.log('1시간 전의 거래 데이터:', data);
-  } catch (err) {
-    console.error('데이터 조회 오류:', err);
-  }
-}, 30000);
