@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import useThrottling from './utils/useThrottling';
 import "./App.css"
 
-const periods = ["30m", "1h", "4h", "12h", "1d", "3d"];
+const periods = ["15m", "30m", "1h", "4h", "12h", "1d"];
 
 function App() {
   const periodRef = useRef(periods[0]);
@@ -38,6 +39,8 @@ function App() {
       console.error("요청 실패.", error);
     }
   };
+
+  const buttonClick = useThrottling(getAggregationData, 500);
 
   // 그래프
   useEffect(() => {
@@ -103,9 +106,9 @@ function App() {
             <option key={period} value={period}>{period}</option>
           ))}
         </select>
-        <button onClick={getAggregationData}>조회</button>
+        <button onClick={buttonClick}>조회</button>
       </div>
-      <div style={{ marginLeft: 'auto', padding: '10px' }} >startTime: {startTime}</div>
+      <div style={{ marginLeft: 'auto', padding: '10px' }} >연결 시각: {startTime}</div>
       <div style={{ margin: '15px', display: 'flex', justifyContent: 'space-between'}}>
         {periods.map((period) => (
           <div key={period} className='ratio'>

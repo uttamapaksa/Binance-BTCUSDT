@@ -4,10 +4,12 @@
 
 // Environment Variables
 require('dotenv').config({ path: '../.env' });
+const SERVER_URL = process.env.SERVER_URL;
 const PORT = parseInt(process.env.PORT);
-const MONGODB_USERNAME = process.env.MONGODB_USERNAME;
-const MONGODB_PASSWORD = process.env.MONGODB_PASSWORD;
-const APP_NAME = process.env.APP_NAME;
+const GET_API_URL = process.env.GET_API_URL;
+const DB_USERNAME = process.env.DB_USERNAME;
+const DB_PASSWORD = process.env.DB_PASSWORD;
+const DB_APP_NAME = process.env.DB_APP_NAME;
 
 // Express
 const express = require('express');
@@ -21,7 +23,7 @@ const wss = new WebSocket.Server({ server });
 
 // MongoDB
 const mongoose = require('mongoose');
-const mongoURI = `mongodb+srv://${MONGODB_USERNAME}:${MONGODB_PASSWORD}@${APP_NAME}.miw8w.mongodb.net/?retryWrites=true&w=majority&appName=${APP_NAME}`;
+const mongoURI = `mongodb+srv://${DB_USERNAME}:${DB_PASSWORD}@${DB_APP_NAME}.miw8w.mongodb.net/?retryWrites=true&w=majority&appName=${DB_APP_NAME}`;
 mongoose.connect(mongoURI)  // DB connection
   .then(() => console.log('MongoDB가 연결되었습니다.'))
   .catch((err) => console.log(err));
@@ -105,7 +107,7 @@ const aggregateTrades = (trades) => {
 
 
 // MongoDB 기간별 롱/숏 비율 조회
-const periods = ["30m", "1h", "4h", "12h", "1d", "3d"];
+const periods = ["15m", "30m", "1h", "4h", "12h", "1d"];
 const fetchTakerLongShortRatio = async () => {
   const promises = periods.map(async (period) => {
     try {
@@ -173,6 +175,9 @@ const getAggregationData = async (period) => {
 
 // 웹소켓 클라이언트 관리
 wss.on('connection', (ws) => {
+  if (clients.size > 10) {
+    clients.clear();
+  }
   console.log('클라이언트가 연결되었습니다.');
   clients.add(ws);
   
@@ -195,12 +200,12 @@ wss.on('connection', (ws) => {
 
 // 지정된 포트에서 서버 실행
 server.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+  console.log(`Server is running on ${SERVER_URL}:${PORT}`);
 });
 
 
 // 조회 API
-app.get('/aggregation-data/:period', async (req, res) => {
+app.get(`/${GET_API_URL}/:period`, async (req, res) => {
   const { period } = req.params; 
   if (!periods.includes(period)) {
     return res.status(400).json({error: '요청한 조회 기간 형식이 맞지 않습니다.'});
@@ -220,7 +225,12 @@ app.get('/aggregation-data/:period', async (req, res) => {
 
 // 실시간으로 CCXT 라이브러리 선물 거래 데이터 수신
 const watchFutureTrades = async () => {
-  if (bssocket.has['watchTrades']) {
+  while (true) {
+    if (!bssocket.has['watchTrades']) {
+      console.error('watchTrades 기능을 지원하지 않습니다. 10초 후 재시도합니다.');
+      await new Promise((resolve) => setTimeout(resolve, 10000));
+      continue; 
+    }
     try {
       while (true) {
         const trades = await bssocket.watchTrades(symbol);
@@ -238,6 +248,7 @@ const watchFutureTrades = async () => {
       }
     } catch (e) {
       console.error('CCXT 라이브러리 거래 데이터 수신 오류', e);
+      await new Promise((resolve) => setTimeout(resolve, 5000)); // 5초 대기
     }
   }
 };
