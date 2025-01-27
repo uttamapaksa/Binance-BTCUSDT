@@ -83,6 +83,22 @@ web_modules/
 .cache
 .parcel-cache
 
+# React.js #
+.DS_*
+*.log
+logs
+**/*.backup.*
+**/*.back.*
+
+node_modules
+bower_components
+
+*.sublime*
+
+psd
+thumb
+sketch
+
 # Next.js build output
 .next
 out

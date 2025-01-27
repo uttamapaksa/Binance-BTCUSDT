@@ -1,3 +1,7 @@
+// -------------------------------------------------
+// 선언부
+// -------------------------------------------------
+
 // Environment Variables
 require('dotenv').config({ path: '../.env' });
 const PORT = parseInt(process.env.PORT);
@@ -19,7 +23,7 @@ const wss = new WebSocket.Server({ server });
 const mongoose = require('mongoose');
 const mongoURI = `mongodb+srv://${MONGODB_USERNAME}:${MONGODB_PASSWORD}@${APP_NAME}.miw8w.mongodb.net/?retryWrites=true&w=majority&appName=${APP_NAME}`;
 mongoose.connect(mongoURI)  // DB connection
-  .then(() => console.log('MongoDB Connected'))
+  .then(() => console.log('MongoDB가 연결되었습니다.'))
   .catch((err) => console.log(err));
 const tradeDataSchema = new mongoose.Schema({  // schema
   tradeTime: { type: Date, default: Date.now, index: true, expires: 259200 },  // TTL: 3 days
@@ -38,15 +42,32 @@ const bssocket = new ccxtpro.binance({
 const symbol = 'BTC/USDT';
 const clients = new Set();
 
-// Binance API
-const axios = require('axios');
-const url = 'https://fapi.binance.com/futures/data/takerlongshortRatio';
-const periods = ["30m", "1h", "4h", "12h", "1d"];
-
 // batch updated data
 let batchDataCount = 0;
 let batchDataSocket = [0, 0, 0, 0, 0, 0];
 let batchDataMongo = [0, 0, 0, 0, 0, 0];
+
+
+
+// -------------------------------------------------
+// 함수부
+// -------------------------------------------------
+
+// 시간 -> 밀리초 변환 함수
+const toMilliSeconds = (timeStr) => {
+  const timeValue = parseInt(timeStr);
+  const unit = timeStr[timeStr.length - 1];
+  switch (unit) {
+    case 'm':
+      return timeValue * 60 * 1000;
+    case 'h':
+      return timeValue * 60 * 60 * 1000;
+    case 'd':
+      return timeValue * 24 * 60 * 60 * 1000;
+    default:
+      return 0;
+  }   
+};
 
 
 // 실시간 선물 거래 데이터 필터링 및 집계 
@@ -83,101 +104,38 @@ const aggregateTrades = (trades) => {
 };
 
 
-// CCXT 라이브러리로 실시간 선물 거래 데이터 수신
-const watchFutureTrades = async () => {
-  if (bssocket.has['watchTrades']) {
-    try {
-      while (true) {
-        const trades = await bssocket.watchTrades(symbol);
-        aggregateTrades(trades);
-        if (batchDataCount >= 3) {
-          const data = {flag: 1, data: [...batchDataSocket]};
-          batchDataCount = 0;
-          batchDataSocket = [0, 0, 0, 0, 0, 0];
-          clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify(data));
-            }
-          });
-        }
-      }
-    } catch (e) {
-      console.error('Error fetching trades:', e);
-    }
-  }
-};
-
-
-// 바이낸스 API로 기간별 롱/숏 비율을 조회
+// MongoDB 기간별 롱/숏 비율 조회
+const periods = ["30m", "1h", "4h", "12h", "1d", "3d"];
 const fetchTakerLongShortRatio = async () => {
-  const promises = periods.map((period) => {
-    const params = {
-      symbol: 'BTCUSDT',
-      period,
-      limit: 1,
-    };
-    return axios.get(url, { params })
-      .then(response => {
-        return { period, data: response.data };
-      })
-      .catch(error => {
-        console.error(`Error fetching data for period ${period}:`, error);
-        return { period, data: null };
-      });
+  const promises = periods.map(async (period) => {
+    try {
+      const data = await getAggregationData(period);
+      if (data) {
+        const sh = data[0] + data[2] + data[4]; 
+        const lo = data[1] + data[3] + data[5]; 
+        const ratio = ((lo / (sh + lo)) * 100) | 0;
+        return{ period, data: ratio };
+      } else {
+        return{ period, data: 50 };
+      }
+    } catch (error) {
+      return{ period, data: 50 };
+    }
   });
 
   const results = await Promise.all(promises);
-  
   const data = {};
-
   results.forEach(result => {
-    const ratio = Number(result.data?.[0]?.buySellRatio || 0);
-    data[result.period] = Number.isFinite(ratio) ? Math.trunc((ratio / (1 + ratio)) * 100) : 0;;
+    data[result.period] = result.data;
   });
-
+  
   return {flag: 0, data};
 };
 
 
-// 30초마다 거래 데이터를 MongoDB에 저장
-const saveTradeData = async () => {
-  try {
-    const data = [...batchDataMongo];
-    if (batchDataMongo.reduce((a, c) => a + c, 0) === 0) {
-      console.log('데이터가 없으므로 삽입을 건너뜁니다.');
-      return;
-    }
-    const newTradeData = new TradeData({ data });
-    await newTradeData.save();
-    batchDataMongo = [0, 0, 0, 0, 0, 0];
-    console.log('데이터가 성공적으로 삽입되었습니다!');
-  } catch (err) {
-    console.error('데이터 삽입 중 오류 발생:', err);
-  } finally {
-    setTimeout(saveTradeData, 30000);
-  }
-}
-
-
-// 30초마다 롱/숏 비율을 프론트엔드에 전송
-const sendTakerLongShortRatio = async () =>{
-  try {
-    const data = await fetchTakerLongShortRatio();
-    clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(data));
-    }});
-    console.log('데이터가 성공적으로 전송되었습니다!');
-  } catch (err) {
-    console.error('데이터 전송 중 오류 발생:', err);
-  } finally {
-    setTimeout(sendTakerLongShortRatio, 30000);
-  }
-}
-
-
-// DB에 기간에 따른 거래 데이터 조회
-const getAggregationData = async (timeAgo) => {
+// MongoDB 기간별 거래 데이터 조회
+const getAggregationData = async (period) => {
+  const timeAgo = toMilliSeconds(period);
   try {
     const result = await TradeData.aggregate([
       {
@@ -204,60 +162,122 @@ const getAggregationData = async (timeAgo) => {
       }
     ]);
     if (result.length > 0) {
-      console.log('데이터가 성공적으로 조회되었습니다!', result[0].resultArray);
+      console.log(period, '데이터가 성공적으로 조회되었습니다!', result[0].resultArray);
       return result[0].resultArray;
     }
   } catch (err) {
-    console.error('데이터 조회 오류:', err);
+    console.error(period, '데이터 조회 중 오류가 발생했습니다.', err);
   };
 }
 
 
 // 웹소켓 클라이언트 관리
 wss.on('connection', (ws) => {
-  console.log('Client connected');
+  console.log('클라이언트가 연결되었습니다.');
   clients.add(ws);
   
   ws.on('close', () => {
-    console.log('Client disconnected');
+    console.log('클라이언트가 연결이 해제되었습니다.');
     clients.delete(ws);
   });
   
   ws.on('error', (err) => {
-    console.error('WebSocket error:', err);
+    console.error('웹소켓 에러가 발생했습니다.', err);
     clients.delete(ws);
   });
 });
 
 
+
+// -------------------------------------------------
 // 실행부
+// -------------------------------------------------
 
 // 지정된 포트에서 서버 실행
 server.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
 
+
 // 조회 API
-app.get('/aggregation-data/:timeAgo', async (req, res) => {
-  const { timeAgo } = req.params; 
+app.get('/aggregation-data/:period', async (req, res) => {
+  const { period } = req.params; 
+  if (!periods.includes(period)) {
+    return res.status(400).json({error: '요청한 조회 기간 형식이 맞지 않습니다.'});
+  }
   try {
-    const data = await getAggregationData(timeAgo);
+    const data = await getAggregationData(period);
     if (data) {
       res.json(data);  // 성공적인 응답
     } else {
-      res.status(404).json({ error: 'Data not found for this time period' });
+      res.status(404).json({ error: '해당 기간의 데이터가 없습니다.' });
     }
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'An error occurred while fetching the data' });
+    res.status(500).json({ error: '데이터 조회 오류가 발생했습니다.' });
   }
 });
 
-// watchFutureTrades() 실행
+
+// 실시간으로 CCXT 라이브러리 선물 거래 데이터 수신
+const watchFutureTrades = async () => {
+  if (bssocket.has['watchTrades']) {
+    try {
+      while (true) {
+        const trades = await bssocket.watchTrades(symbol);
+        aggregateTrades(trades);
+        if (batchDataCount >= 3) {
+          const data = {flag: 1, data: [...batchDataSocket]};
+          batchDataCount = 0;
+          batchDataSocket = [0, 0, 0, 0, 0, 0];
+          clients.forEach((client) => {
+            if (client.readyState === WebSocket.OPEN) {
+              client.send(JSON.stringify(data));
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.error('CCXT 라이브러리 거래 데이터 수신 오류', e);
+    }
+  }
+};
 watchFutureTrades();
 
-// sendTakerLongShortRatio() 실행
+
+// 5분마다 기간별 롱/숏 비율을 프론트엔드에 전송
+const sendTakerLongShortRatio = async () =>{
+  try {
+    const data = await fetchTakerLongShortRatio();
+    clients.forEach((client) => {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(JSON.stringify(data));
+    }});
+    console.log('데이터가 성공적으로 전송되었습니다!');
+  } catch (err) {
+    console.error('데이터 전송 중 오류 발생:', err);
+  } finally {
+    setTimeout(sendTakerLongShortRatio, 300000);
+  }
+}
 sendTakerLongShortRatio();
 
-// saveTradeData() 실행
+
+// 30초마다 거래 데이터를 MongoDB에 저장
+const saveTradeData = async () => {
+  try {
+    const data = [...batchDataMongo];
+    if (batchDataMongo.reduce((a, c) => a + c, 0) === 0) {
+      console.log('데이터가 없으므로 삽입을 건너뜁니다.');
+      return;
+    }
+    const newTradeData = new TradeData({ data });
+    await newTradeData.save();
+    batchDataMongo = [0, 0, 0, 0, 0, 0];
+    console.log('데이터가 성공적으로 삽입되었습니다!');
+  } catch (err) {
+    console.error('데이터 삽입 중 오류가 발생했습니다.', err);
+  } finally {
+    setTimeout(saveTradeData, 30000);
+  }
+}
 saveTradeData();

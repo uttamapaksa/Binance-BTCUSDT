@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import "./App.css"
 
-const periods = ["30m", "1h", "4h", "12h", "1d"];
+const periods = ["30m", "1h", "4h", "12h", "1d", "3d"];
 
 function App() {
+  const periodRef = useRef(periods[0]);
   const [ratio, setRatio] = useState(periods.reduce((acc, period) => { acc[period] = 50; return acc }, {}));
   const [trades, setTrades] = useState([0, 0, 0, 0, 0, 0]);
   const [bars, seTBars] = useState([0, 0, 0, 0, 0, 0]);
@@ -14,26 +15,27 @@ function App() {
   };
 
   // 데이터 조회
-  const getAggregationData = async (timeAgo) => {
+  const getAggregationData = async () => {
+    const period = periodRef.current.value;
     try {
-      const response = await fetch(`http://localhost:4000/aggregation-data/${timeAgo}`, {
+      const response = await fetch(`http://localhost:4000/aggregation-data/${period}`, {
         method: 'GET',
       });
+      const data = await response.json();
       if (response.ok) {
-        const data = await response.json();
         setTrades(data);
         initStartTime();
       } else {
         if (response.status === 404) {
-          console.error('Data not found for this time period');
+          console.error(data.error, response.status);
         } else if (response.status === 500) {
-          console.error('Server error occurred');
+          console.error(data.error, response.status);
         } else {
-          console.error('Unexpected error:', response.status);
+          console.error('예상치 못한 에러.', response.status);
         }
       }
     } catch (error) {
-      console.error("Request failed:", error);
+      console.error("요청 실패.", error);
     }
   };
 
@@ -95,7 +97,14 @@ function App() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <button onClick={()=>getAggregationData(60 * 60 * 1000)}>조회</button>
+      <div style={{display: 'flex', gap: '10px'}}>
+        <select ref={periodRef}>
+          {periods.map((period) => (
+            <option key={period} value={period}>{period}</option>
+          ))}
+        </select>
+        <button onClick={getAggregationData}>조회</button>
+      </div>
       <div style={{ marginLeft: 'auto', padding: '10px' }} >startTime: {startTime}</div>
       <div style={{ margin: '15px', display: 'flex', justifyContent: 'space-between'}}>
         {periods.map((period) => (
