@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import useThrottling from './utils/useThrottling';
+import useThrottle from './utils/useThrottle';
 import "./App.css"
 
-const periods = ["15m", "30m", "1h", "4h", "12h", "1d"];
+const SERVEL_URL = 'http://localhost';
+const WEBSOCKET_URL = 'ws://localhost';
+const periods = ['30m', '1h', '2h', '4h', '12h', '1d'];
 
 function App() {
   const periodRef = useRef(periods[0]);
@@ -19,7 +21,7 @@ function App() {
   const getAggregationData = async () => {
     const period = periodRef.current.value;
     try {
-      const response = await fetch(`http://localhost:4000/aggregation-data/${period}`, {
+      const response = await fetch(`${SERVEL_URL}/aggregation-data/${period}`, {
         method: 'GET',
       });
       const data = await response.json();
@@ -40,7 +42,7 @@ function App() {
     }
   };
 
-  const buttonClick = useThrottling(getAggregationData, 500);
+  const buttonClick = useThrottle(getAggregationData, 500);
 
   // 그래프
   useEffect(() => {
@@ -59,7 +61,8 @@ function App() {
   }, [trades]);
 
   useEffect(() => {
-    const socket = new WebSocket('ws://localhost:4000');
+    // const socket = new WebSocket(`${WEBSOCKET_URL}:${PORT}`);
+    const socket = new WebSocket(`${WEBSOCKET_URL}`);
     
     // 웹소켓 연결
     socket.onopen = () => {

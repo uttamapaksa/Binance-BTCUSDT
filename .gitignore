@@ -144,3 +144,7 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+# AWS Production
+*.pem
+*.zip

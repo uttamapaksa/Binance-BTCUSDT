@@ -3,19 +3,33 @@
 // -------------------------------------------------
 
 // Environment Variables
-require('dotenv').config({ path: '../.env' });
-const SERVER_URL = process.env.SERVER_URL;
-const PORT = parseInt(process.env.PORT);
-const GET_API_URL = process.env.GET_API_URL;
+if (process.env.NODE_ENV !== 'production') {
+  require('dotenv').config({ path: '../.env' });
+}
+
 const DB_USERNAME = process.env.DB_USERNAME;
 const DB_PASSWORD = process.env.DB_PASSWORD;
 const DB_APP_NAME = process.env.DB_APP_NAME;
 
 // Express
+const cors = require('cors');
 const express = require('express');
 const app = express();
 const http = require('http');
 const server = http.createServer(app);
+
+// CORS
+app.use('/aggregation-data', cors({
+  origin: '*',
+  methods: ['GET'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
+
+// 지정된 포트에서 서버 실행
+const PORT = 80;
+server.listen(PORT, () => {
+  console.log(`Server is running!`);
+});
 
 // Websocket
 const WebSocket = require('ws');
@@ -107,7 +121,7 @@ const aggregateTrades = (trades) => {
 
 
 // MongoDB 기간별 롱/숏 비율 조회
-const periods = ["15m", "30m", "1h", "4h", "12h", "1d"];
+const periods = ["30m", "1h", "2h", "4h", "12h", "1d"];
 const fetchTakerLongShortRatio = async () => {
   const promises = periods.map(async (period) => {
     try {
@@ -164,7 +178,7 @@ const getAggregationData = async (period) => {
       }
     ]);
     if (result.length > 0) {
-      console.log(period, '데이터가 성공적으로 조회되었습니다!', result[0].resultArray);
+      console.log(period, '데이터가 성공적으로 조회되었습니다!');
       return result[0].resultArray;
     }
   } catch (err) {
@@ -198,14 +212,8 @@ wss.on('connection', (ws) => {
 // 실행부
 // -------------------------------------------------
 
-// 지정된 포트에서 서버 실행
-server.listen(PORT, () => {
-  console.log(`Server is running on ${SERVER_URL}:${PORT}`);
-});
-
-
 // 조회 API
-app.get(`/${GET_API_URL}/:period`, async (req, res) => {
+app.get(`/aggregation-data/:period`, async (req, res) => {
   const { period } = req.params; 
   if (!periods.includes(period)) {
     return res.status(400).json({error: '요청한 조회 기간 형식이 맞지 않습니다.'});
@@ -247,8 +255,8 @@ const watchFutureTrades = async () => {
         }
       }
     } catch (e) {
-      console.error('CCXT 라이브러리 거래 데이터 수신 오류', e);
-      await new Promise((resolve) => setTimeout(resolve, 5000)); // 5초 대기
+      console.error('CCXT 라이브러리 거래 데이터 수신 오류', e, new Date(Date.now()));
+      await new Promise((resolve) => setTimeout(resolve, 10000)); // 10초 대기
     }
   }
 };
