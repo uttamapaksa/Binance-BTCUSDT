@@ -4,24 +4,33 @@
 
 // Environment Variables
 if (process.env.NODE_ENV !== 'production') {
-  require('dotenv').config({ path: '../.env' });
+  require('dotenv').config();
 }
-
 const DB_USERNAME = process.env.DB_USERNAME;
 const DB_PASSWORD = process.env.DB_PASSWORD;
 const DB_APP_NAME = process.env.DB_APP_NAME;
+const CLOUD_FRONT_URL = process.env.CLOUD_FRONT_URL;
+const CUSTOM_HEADER = process.env.CUSTOM_HEADER;
 
 // Express
 const cors = require('cors');
 const express = require('express');
 const app = express();
 
-// CORS
-app.use('/aggregation-data', cors({
-  origin: '*',
-  methods: ['GET'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-}));
+// CORS, Custom Header
+app.use('/aggregation-data', (req, res, next) => {
+  const customHeader = req.get('CloudFront-Custom-Header');
+  if (customHeader === CUSTOM_HEADER) {
+    cors({
+      origin: CLOUD_FRONT_URL,
+      methods: ['GET'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'CloudFront-Custom-Header'],
+      credentials: true,
+    })(req, res, next);
+  } else {
+    res.status(403).send('Forbidden');
+  }
+});
 
 // 지정된 포트에서 서버 실행
 const PORT = 8080;
@@ -176,11 +185,11 @@ const getAggregationData = async (period) => {
       }
     ]);
     if (result.length > 0) {
-      console.log(period, 'The data was successfully retrieved!');
+      // console.log(period, 'Retrieval successful!');
       return result[0].resultArray;
     }
   } catch (err) {
-    console.error(period, 'An error occurred while retrieving data.', DB_USERNAME, err);
+    console.error(period, 'Retrieval failed:', err);
   };
 }
 
@@ -214,17 +223,17 @@ wss.on('connection', (ws) => {
 app.get(`/aggregation-data/:period`, async (req, res) => {
   const { period } = req.params; 
   if (!periods.includes(period)) {
-    return res.status(400).json({error: 'The requested lookup period format is not valid.'});
+    return res.status(400).json({error: 'The requested period is not valid.'});
   }
   try {
     const data = await getAggregationData(period);
     if (data) {
       res.json(data);  // 성공적인 응답
     } else {
-      res.status(404).json({ error: 'No data for the period,' });
+      res.status(404).json({ error: 'No period data available.' });
     }
   } catch (error) {
-    res.status(500).json({ error: 'A data lookup error occurred.' });
+    res.status(500).json({ error: 'Period data error.' });
   }
 });
 
@@ -233,8 +242,8 @@ app.get(`/aggregation-data/:period`, async (req, res) => {
 const watchFutureTrades = async () => {
   while (true) {
     if (!bssocket.has['watchTrades']) {
-      console.error('The watchTrades() feature is not supported, please retry in 10 seconds.');
-      await new Promise((resolve) => setTimeout(resolve, 10000));
+      console.error('The watchTrades() feature is not supported. Please retry in 15 seconds.');
+      await new Promise((resolve) => setTimeout(resolve, 15000));  // 15초 대기
       continue; 
     }
     try {
@@ -253,8 +262,8 @@ const watchFutureTrades = async () => {
         }
       }
     } catch (e) {
-      console.error('CCXT Library Transaction Data Received Error', e, new Date(Date.now()));
-      await new Promise((resolve) => setTimeout(resolve, 10000)); // 10초 대기
+      console.error('CCXT Library Error. Please retry in 30 seconds.', e, new Date(Date.now()));
+      await new Promise((resolve) => setTimeout(resolve, 30000));  // 30초 대기
     }
   }
 };
@@ -269,9 +278,9 @@ const sendTakerLongShortRatio = async () =>{
       if (client.readyState === WebSocket.OPEN) {
         client.send(JSON.stringify(data));
     }});
-    console.log('The data was successfully sent!');
+    console.log('Sent successfully!');
   } catch (err) {
-    console.error('An error occurred during data transfer:', err);
+    console.error('Send failed:', err);
   } finally {
     setTimeout(sendTakerLongShortRatio, 300000);
   }
@@ -284,15 +293,15 @@ const saveTradeData = async () => {
   try {
     const data = [...batchDataMongo];
     if (batchDataMongo.reduce((a, c) => a + c, 0) === 0) {
-      console.log('Skip inserting because there is no data.');
+      console.log('Insert skipped.');
       return;
     }
     const newTradeData = new TradeData({ data });
     await newTradeData.save();
     batchDataMongo = [0, 0, 0, 0, 0, 0];
-    console.log('The data has been successfully inserted!');
+    console.log('Insert successful!');
   } catch (err) {
-    console.error('An error occurred while inserting data.', err);
+    console.error('Insert failed:', err);
   } finally {
     setTimeout(saveTradeData, 60000);
   }
