@@ -10,7 +10,9 @@ const DB_USERNAME = process.env.DB_USERNAME;
 const DB_PASSWORD = process.env.DB_PASSWORD;
 const DB_APP_NAME = process.env.DB_APP_NAME;
 const CLOUD_FRONT_URL = process.env.CLOUD_FRONT_URL;
+const CLOUD_FRONT_WWW_URL = process.env.CLOUD_FRONT_WWW_URL;
 const CUSTOM_HEADER = process.env.CUSTOM_HEADER;
+const allowedOrigins = [CLOUD_FRONT_URL, CLOUD_FRONT_WWW_URL];
 
 // Express
 const cors = require('cors');
@@ -22,7 +24,7 @@ app.use('/aggregation-data', (req, res, next) => {
   const customHeader = req.get('CloudFront-Custom-Header');
   if (customHeader === CUSTOM_HEADER) {
     cors({
-      origin: CLOUD_FRONT_URL,
+      origin: allowedOrigins,
       methods: ['GET'],
       allowedHeaders: ['Content-Type', 'Authorization', 'CloudFront-Custom-Header'],
       credentials: true,
@@ -40,14 +42,25 @@ const server = app.listen(PORT, () => {
 
 // Websocket
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ server });
+const wss = new WebSocket.Server({ 
+  server,
+  verifyClient: (info, done) => {
+    const origin = info.origin;
+    if (allowedOrigins.includes(origin)) {
+      done(true);
+    } else {
+      done(false, 403, 'Forbidden');
+    }
+  }
+});
+
 
 // MongoDB
 const mongoose = require('mongoose');
 const mongoURI = `mongodb+srv://${DB_USERNAME}:${DB_PASSWORD}@${DB_APP_NAME}.miw8w.mongodb.net/?retryWrites=true&w=majority&appName=${DB_APP_NAME}`;
 mongoose.connect(mongoURI)  // DB connection
   .then(() => console.log('MongoDB is connected.'))
-  .catch((err) => console.log(err));
+  .catch((err) => console.log('MongoDB connection error:', err));
 const tradeDataSchema = new mongoose.Schema({  // schema
   tradeTime: { type: Date, default: Date.now, index: true, expires: 259200 },  // TTL: 3 days
   data: [Number],

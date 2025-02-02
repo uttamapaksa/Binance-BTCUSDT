@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from 'react';
 import useThrottle from './utils/useThrottle';
 import "./App.css"
 
-const SERVEL_URL = 'http://localhost';
-const WEBSOCKET_URL = 'ws://localhost';
+// const SERVEL_URL = 'http://localhost:8080';
+// const WEBSOCKET_URL = 'ws://localhost:8080';
+const SERVEL_URL = import.meta.env.VITE_SERVEL_URL;
+const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL;
 const periods = ['30m', '1h', '2h', '4h', '12h', '1d'];
 
 function App() {
@@ -12,6 +14,7 @@ function App() {
   const [trades, setTrades] = useState([0, 0, 0, 0, 0, 0]);
   const [bars, seTBars] = useState([0, 0, 0, 0, 0, 0]);
   const [startTime, setStartTime] = useState('');
+  const [status, setStatus] = useState('O');
 
   const initStartTime = () => {
     setStartTime(new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }));
@@ -61,7 +64,6 @@ function App() {
   }, [trades]);
 
   useEffect(() => {
-    // const socket = new WebSocket(`${WEBSOCKET_URL}:${PORT}`);
     const socket = new WebSocket(`${WEBSOCKET_URL}`);
     
     // 웹소켓 연결
@@ -111,7 +113,7 @@ function App() {
         </select>
         <button onClick={buttonClick}>조회</button>
       </div>
-      <div style={{ marginLeft: 'auto', padding: '10px' }} >연결 시각: {startTime}</div>
+      <div style={{ marginLeft: 'auto', padding: '5px' }} >연결: {startTime} {status}</div>
       <div style={{ margin: '15px', display: 'flex', justifyContent: 'space-between'}}>
         {periods.map((period) => (
           <div key={period} className='ratio'>
