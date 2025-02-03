@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import useThrottle from './utils/useThrottle';
-import "./App.css"
+import DoughnutChart from './components/doughnut-chart';
+import BarChart from './components/bar-chart';
+import './App.css'
 
-// const SERVEL_URL = 'http://localhost:8080';
-// const WEBSOCKET_URL = 'ws://localhost:8080';
 const SERVEL_URL = import.meta.env.VITE_SERVEL_URL;
 const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL;
 const periods = ['30m', '1h', '2h', '4h', '12h', '1d'];
@@ -12,9 +12,7 @@ function App() {
   const periodRef = useRef(periods[0]);
   const [ratio, setRatio] = useState(periods.reduce((acc, period) => { acc[period] = 50; return acc }, {}));
   const [trades, setTrades] = useState([0, 0, 0, 0, 0, 0]);
-  const [bars, seTBars] = useState([0, 0, 0, 0, 0, 0]);
-  const [startTime, setStartTime] = useState('');
-  const [status, setStatus] = useState('O');
+  const [startTime, setStartTime] = useState('X');
 
   const initStartTime = () => {
     setStartTime(new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }));
@@ -22,7 +20,7 @@ function App() {
 
   // 데이터 조회
   const getAggregationData = async () => {
-    const period = periodRef.current.value;
+    const period = periodRef.current.valueOf;
     try {
       const response = await fetch(`${SERVEL_URL}/aggregation-data/${period}`, {
         method: 'GET',
@@ -46,22 +44,6 @@ function App() {
   };
 
   const buttonClick = useThrottle(getAggregationData, 500);
-
-  // 그래프
-  useEffect(() => {
-    seTBars(() => {
-      const [as, al, ss, sl, ws, wl] = [...trades];
-      const next = [
-        ((as * 300) / (as + al || 1) | 0),  // 0으로 나누는 경우 방지
-        ((al * 300) / (as + al || 1) | 0),
-        ((ss * 300) / (ss + sl || 1) | 0),
-        ((sl * 300) / (ss + sl || 1) | 0),
-        ((ws * 300) / (ws + wl || 1) | 0),
-        ((wl * 300) / (ws + wl || 1) | 0),
-      ]
-      return next;
-    })
-  }, [trades]);
 
   useEffect(() => {
     const socket = new WebSocket(`${WEBSOCKET_URL}`);
@@ -104,45 +86,32 @@ function App() {
   }, []);
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column' }}>
-      <div style={{display: 'flex', gap: '10px'}}>
-        <select ref={periodRef}>
-          {periods.map((period) => (
-            <option key={period} value={period}>{period}</option>
-          ))}
-        </select>
-        <button onClick={buttonClick}>조회</button>
+    <div className='flex flex-col'>
+      {/* 연결시각 */}
+      <div className='flex justify-between'>
+        <div>Binance BTCUSDT</div>
+        <div className='ml-auto'>연결: {startTime}</div>
       </div>
-      <div style={{ marginLeft: 'auto', padding: '5px' }} >연결: {startTime} {status}</div>
-      <div style={{ margin: '15px', display: 'flex', justifyContent: 'space-between'}}>
+      {/* 시간별 */}
+      <h1 className="ml-10 mt-8 text-xl font-bold text-left text-gray-800">시간별</h1>
+      <div className='px-2 sm:px-10 grid grid-cols-3 sm:grid-cols-6 gap-x-1 place-items-center'>
         {periods.map((period) => (
-          <div key={period} className='ratio'>
-            <span>{period}: {ratio[period]}%</span><span className={ratio[period] < 50 ? 'redDot' : 'greenDot'} />
-          </div>
+          <DoughnutChart key={period} period={period} ratio={ratio[period]} />
         ))}
       </div>
-      <div style={{display: 'flex'}}>
-        <div className='container'>
-          <h3>ant</h3>
-          <div className='graph'> 
-            <div className='redBar' style={{ height: `${bars[0]}px` }}>{trades[0] | 0}</div>
-            <div className='greenBar' style={{ height: `${bars[1]}px` }}>{trades[1] | 0}</div>
-          </div>
-        </div>
-        <div className='container'>
-          <h3>shark</h3>
-          <div className='graph'> 
-            <div className='redBar' style={{ height: `${bars[2]}px` }}>{trades[2] | 0}</div>
-            <div className='greenBar' style={{ height: `${bars[3]}px` }}>{trades[3] | 0}</div>
-          </div>
-        </div>
-        <div className='container'>
-          <h3>whale</h3>
-          <div className='graph'> 
-            <div className='redBar' style={{ height: `${bars[4]}px` }}>{trades[4] | 0}</div>
-            <div className='greenBar' style={{ height: `${bars[5]}px` }}>{trades[5] | 0}</div>
-          </div>
-        </div>
+      {/* 거래량별 */}
+      <h1 className="ml-10 mt-12 text-xl font-bold text-left text-gray-800">거래량별</h1>
+      <select
+        ref={periodRef}
+        onChange={buttonClick}
+        className='ml-auto py-1 px-2 border border-gray-400 rounded-sm'
+      >
+        {periods.map((period) => (
+          <option key={period} value={period}>{period}</option>
+        ))}
+      </select>
+      <div className='mt-3 h-92'>
+        <BarChart trades={trades} />
       </div>
     </div>
   );
