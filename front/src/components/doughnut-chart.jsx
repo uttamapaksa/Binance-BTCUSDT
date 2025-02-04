@@ -10,7 +10,7 @@ export default function DoughnutChart({ period, ratio }) {
         display: true,
         text: `${period}`,
         font: { weight: '400' },
-        color: ratio > 50 ? '#47b647' : (ratio < 50 ? '#f54960' : '#000000'),
+        color: ratio > 50 ? '#07a336' : (ratio < 50 ? '#eb2f2f' : '#000000'),
       },
       tooltip: {
         callbacks: {
@@ -34,8 +34,8 @@ export default function DoughnutChart({ period, ratio }) {
       {
         data: [ratio, 100-ratio],
         backgroundColor: [
-          '#47b647',
-          '#f54960',
+          '#07a336',
+          '#eb2f2f',
         ],
         borderColor: [
           'white',

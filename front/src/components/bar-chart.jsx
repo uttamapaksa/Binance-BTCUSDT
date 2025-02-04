@@ -1,4 +1,4 @@
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement } from 'chart.js';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, layouts } from 'chart.js';
 import ChartDataLabels from 'chartjs-plugin-datalabels';
 import { Bar } from 'react-chartjs-2';
 
@@ -12,11 +12,16 @@ export default function BarChart({ trades }) {
   const longRatio = [0, 1, 2].map((i) => longData[i] / totalData[i] * 100 | 0);
 
   const options = {
+    layout: {
+      padding: {
+        top: 20,
+      }
+    },
     scales: {
       x: {
         title: {
           display: true,
-          text: '($)'
+          text: '(1,000,000$)'
         }
       },
       y: {
@@ -25,10 +30,6 @@ export default function BarChart({ trades }) {
         beginAtZero: true,
         ticks: {
           stepSize: 20,
-        },
-        title: {
-          display: true,
-          text: '(%)',
         },
       },
     },
@@ -45,13 +46,14 @@ export default function BarChart({ trades }) {
         anchor: 'end',  // 데이터 라벨 위치
         align: 'top',   // 막대 위에 표시
         color: 'black',
+        font: { size: 12 },
         formatter: (_, context) => {
           const index = context.dataIndex;
           const datasetIndex = context.datasetIndex;
           if (datasetIndex === 0) {
-            return `${shortData[index]}K`;
+            return `${shortData[index]}`;
           }
-          return `${longData[index]}K`;
+          return `${longData[index]}`;
         },
       },
     },
@@ -67,11 +69,11 @@ export default function BarChart({ trades }) {
     datasets: [
       {
         data: shortRatio,
-        backgroundColor: '#f54960',
+        backgroundColor: '#eb2f2f',
       },
       {
         data: longRatio,
-        backgroundColor: '#47b647',
+        backgroundColor: '#07a336',
       },
     ],
   };

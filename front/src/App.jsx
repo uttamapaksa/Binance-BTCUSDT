@@ -1,26 +1,25 @@
-import { useEffect, useRef, useState } from 'react';
-import useThrottle from './utils/useThrottle';
+import { useEffect, useState } from 'react';
 import DoughnutChart from './components/doughnut-chart';
 import BarChart from './components/bar-chart';
 import './App.css'
+import conIcon from './assets/check-circle.svg';
+import disconIcon from './assets/x-circle.svg';
 
 const SERVEL_URL = import.meta.env.VITE_SERVEL_URL;
 const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL;
 const periods = ['30m', '1h', '2h', '4h', '12h', '1d'];
 
 function App() {
-  const periodRef = useRef(periods[0]);
+  const [period, setPeriod] = useState('');
   const [ratio, setRatio] = useState(periods.reduce((acc, period) => { acc[period] = 50; return acc }, {}));
   const [trades, setTrades] = useState([0, 0, 0, 0, 0, 0]);
-  const [startTime, setStartTime] = useState('X');
+  const [startTime, setStartTime] = useState('');
 
-  const initStartTime = () => {
-    setStartTime(new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }));
-  };
+  const initStartTime = () => setStartTime(new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }));
 
   // 데이터 조회
   const getAggregationData = async () => {
-    const period = periodRef.current.valueOf;
+    if (period === '') return;
     try {
       const response = await fetch(`${SERVEL_URL}/aggregation-data/${period}`, {
         method: 'GET',
@@ -43,7 +42,9 @@ function App() {
     }
   };
 
-  const buttonClick = useThrottle(getAggregationData, 500);
+  useEffect(() => {
+    getAggregationData();
+  }, [period]);
 
   useEffect(() => {
     const socket = new WebSocket(`${WEBSOCKET_URL}`);
@@ -88,29 +89,31 @@ function App() {
   return (
     <div className='flex flex-col'>
       {/* 연결시각 */}
-      <div className='flex justify-between'>
-        <div>Binance BTCUSDT</div>
-        <div className='ml-auto'>연결: {startTime}</div>
+      <div className='sm:mt-1 flex justify-between items-center'>
+        <div className='flex items-center font-semibold gap-x-1'>
+          Binance BTCUSDT
+          <img src={startTime? conIcon : disconIcon}  alt="connecion status" className='size-4' />
+        </div>
       </div>
+      <div className='mr-auto text-xs sm:text-sm'>{startTime}</div>
       {/* 시간별 */}
-      <h1 className="ml-10 mt-8 text-xl font-bold text-left text-gray-800">시간별</h1>
+      <h1 className="ml-10 mt-8 font-bold text-left text-gray-800 text-lg sm:text-xl">시간별</h1>
       <div className='px-2 sm:px-10 grid grid-cols-3 sm:grid-cols-6 gap-x-1 place-items-center'>
         {periods.map((period) => (
           <DoughnutChart key={period} period={period} ratio={ratio[period]} />
         ))}
       </div>
       {/* 거래량별 */}
-      <h1 className="ml-10 mt-12 text-xl font-bold text-left text-gray-800">거래량별</h1>
+      <h1 className="ml-10 mt-12 font-bold text-left text-gray-800 text-lg sm:text-xl">거래량별</h1>
       <select
-        ref={periodRef}
-        onChange={buttonClick}
+        onChange={(e) => setPeriod(e.target.value)}
         className='ml-auto py-1 px-2 border border-gray-400 rounded-sm'
       >
         {periods.map((period) => (
           <option key={period} value={period}>{period}</option>
         ))}
       </select>
-      <div className='mt-3 h-92'>
+      <div className='mt-3 sm:mt-5 h-92'>
         <BarChart trades={trades} />
       </div>
     </div>
