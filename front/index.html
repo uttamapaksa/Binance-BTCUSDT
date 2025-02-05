@@ -5,6 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="./src/assets/coin-mono.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Binance BTCUSDT</title>
+    <script>
+      (function() {
+        const theme = localStorage.getItem('theme');
+        const darkMode = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+        if (darkMode) {
+          document.documentElement.classList.add('dark');
+          localStorage.setItem('theme', 'dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+          localStorage.setItem('theme', 'light');
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

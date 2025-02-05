@@ -4,13 +4,17 @@ import { Doughnut } from 'react-chartjs-2';
 ChartJS.register(ArcElement, Title, Tooltip);
 
 export default function DoughnutChart({ period, ratio }) {
+  const backgroundColor = getComputedStyle(document.documentElement).getPropertyValue("--background").trim();
+  const chartGreenColor = getComputedStyle(document.documentElement).getPropertyValue("--chart-green").trim();
+  const chartRedColor = getComputedStyle(document.documentElement).getPropertyValue("--chart-red").trim();
+  
   const options = {
     plugins: {
       title: {
         display: true,
         text: `${period}`,
-        font: { weight: '400' },
-        color: ratio > 50 ? '#07a336' : (ratio < 50 ? '#eb2f2f' : '#000000'),
+        font: { weight: '600' },
+        color: ratio > 50 ? chartGreenColor : (ratio < 50 ? chartRedColor : 'gray'),
       },
       tooltip: {
         callbacks: {
@@ -19,9 +23,7 @@ export default function DoughnutChart({ period, ratio }) {
           },
         },
       },
-      datalabels: {
-        display: false,
-      },
+      datalabels: { display: false },
     },
     animation: false,
   };
@@ -34,12 +36,12 @@ export default function DoughnutChart({ period, ratio }) {
       {
         data: [ratio, 100-ratio],
         backgroundColor: [
-          '#07a336',
-          '#eb2f2f',
+          chartGreenColor,
+          chartRedColor,
         ],
         borderColor: [
-          'white',
-          'white',
+          backgroundColor,
+          backgroundColor,
         ],
         borderWidth: 2,
       },

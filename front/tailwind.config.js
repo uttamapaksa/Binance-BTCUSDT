@@ -1,4 +1,4 @@
 const config = {
-  content: [ "./src/**/*.{jsx}" ],
+  content: [ "./src/**/*.{js,jsx}" ],
 };
 export default config;

@@ -208,21 +208,27 @@ const getAggregationData = async (period) => {
 
 
 // 웹소켓 클라이언트 관리
-wss.on('connection', (ws) => {
-  if (clients.size > 10) {
+wss.on('connection', async (ws) => {
+  if (clients.size > 20) {
     clients.clear();
+    console.log('The clients has been cleared.');
   }
-  console.log('The client is connected.');
+
   clients.add(ws);
+  console.log('The client is connected.');
+  const data = await fetchTakerLongShortRatio();
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(data));
+  };
   
   ws.on('close', () => {
-    console.log('The client is disconnected.');
     clients.delete(ws);
+    console.log('The client is disconnected.');
   });
   
   ws.on('error', (err) => {
-    console.error('A websocket error occurred.', err);
     clients.delete(ws);
+    console.error('A websocket error occurred.', err);
   });
 });
 
@@ -283,7 +289,7 @@ const watchFutureTrades = async () => {
 watchFutureTrades();
 
 
-// 5분마다 기간별 롱/숏 비율을 프론트엔드에 전송
+// 2분마다 기간별 롱/숏 비율을 프론트엔드에 전송
 const sendTakerLongShortRatio = async () =>{
   try {
     const data = await fetchTakerLongShortRatio();
@@ -295,7 +301,7 @@ const sendTakerLongShortRatio = async () =>{
   } catch (err) {
     console.error('Send failed:', err);
   } finally {
-    setTimeout(sendTakerLongShortRatio, 300000);
+    setTimeout(sendTakerLongShortRatio, 120000);
   }
 }
 sendTakerLongShortRatio();

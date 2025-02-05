@@ -1,10 +1,14 @@
-import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, layouts } from 'chart.js';
-import ChartDataLabels from 'chartjs-plugin-datalabels';
+import { Chart as ChartJS, CategoryScale, LinearScale, BarElement } from 'chart.js';
 import { Bar } from 'react-chartjs-2';
+import ChartDataLabels from 'chartjs-plugin-datalabels';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ChartDataLabels);
 
 export default function BarChart({ trades }) {
+  const foregroundColor = getComputedStyle(document.documentElement).getPropertyValue("--foreground").trim();
+  const chartGreenColor = getComputedStyle(document.documentElement).getPropertyValue("--chart-green").trim();
+  const chartRedColor = getComputedStyle(document.documentElement).getPropertyValue("--chart-red").trim();
+
   const shortData = [trades[0], trades[2], trades[4]];
   const longData = [trades[1], trades[3], trades[5]];
   const totalData = [0, 1, 2].map((i) => (shortData[i] + longData[i]) || 1);
@@ -19,18 +23,15 @@ export default function BarChart({ trades }) {
     },
     scales: {
       x: {
-        title: {
-          display: true,
-          text: '(1,000,000$)'
-        }
+        title: { display: true, text: '(1,000,000$)' },
+        grid: { color: 'rgba(128, 128, 128, 0.2)' }
       },
       y: {
         min: 0,
         max: 100,
         beginAtZero: true,
-        ticks: {
-          stepSize: 20,
-        },
+        ticks: { stepSize: 20 },
+        grid: { color: 'rgba(128, 128, 128, 0.2)' }
       },
     },
     plugins: {
@@ -45,7 +46,7 @@ export default function BarChart({ trades }) {
       datalabels: {
         anchor: 'end',  // 데이터 라벨 위치
         align: 'top',   // 막대 위에 표시
-        color: 'black',
+        color: foregroundColor,
         font: { size: 12 },
         formatter: (_, context) => {
           const index = context.dataIndex;
@@ -69,11 +70,11 @@ export default function BarChart({ trades }) {
     datasets: [
       {
         data: shortRatio,
-        backgroundColor: '#eb2f2f',
+        backgroundColor: chartRedColor,
       },
       {
         data: longRatio,
-        backgroundColor: '#07a336',
+        backgroundColor: chartGreenColor,
       },
     ],
   };
