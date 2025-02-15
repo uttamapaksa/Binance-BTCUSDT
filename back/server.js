@@ -209,7 +209,7 @@ const getAggregationData = async (period) => {
 
 // 웹소켓 클라이언트 관리
 wss.on('connection', async (ws) => {
-  if (clients.size > 20) {
+  if (clients.size > 15) {
     clients.clear();
     console.log('The clients has been cleared.');
   }
@@ -262,7 +262,7 @@ const watchFutureTrades = async () => {
   while (true) {
     if (!bssocket.has['watchTrades']) {
       console.error('The watchTrades() feature is not supported. Please retry in 15 seconds.');
-      await new Promise((resolve) => setTimeout(resolve, 15000));  // 15초 대기
+      await new Promise((resolve) => setTimeout(resolve, 60000));  // 1분 대기
       continue; 
     }
     try {
@@ -282,14 +282,14 @@ const watchFutureTrades = async () => {
       }
     } catch (e) {
       console.error('CCXT Library Error. Please retry in 30 seconds.', e, new Date(Date.now()));
-      await new Promise((resolve) => setTimeout(resolve, 30000));  // 30초 대기
+      await new Promise((resolve) => setTimeout(resolve, 60000));  // 1분 대기
     }
   }
 };
 watchFutureTrades();
 
 
-// 2분마다 기간별 롱/숏 비율을 프론트엔드에 전송
+// 5분마다 기간별 롱/숏 비율을 프론트엔드에 전송
 const sendTakerLongShortRatio = async () =>{
   try {
     const data = await fetchTakerLongShortRatio();
@@ -301,7 +301,7 @@ const sendTakerLongShortRatio = async () =>{
   } catch (err) {
     console.error('Send failed:', err);
   } finally {
-    setTimeout(sendTakerLongShortRatio, 120000);
+    setTimeout(sendTakerLongShortRatio, 300000);
   }
 }
 sendTakerLongShortRatio();

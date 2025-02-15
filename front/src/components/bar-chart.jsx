@@ -64,7 +64,6 @@ export default function BarChart({ trades }) {
   };
 
   const labels = ['10K', '100K', '1000K'];
-
   const data = {
     labels,
     datasets: [

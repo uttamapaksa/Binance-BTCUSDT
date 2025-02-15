@@ -29,21 +29,14 @@ export default function DoughnutChart({ period, ratio }) {
   };
   
   const labels = [`Long`, `Short`];
-
   const data = {
     labels,
     datasets: [
       {
         data: [ratio, 100-ratio],
-        backgroundColor: [
-          chartGreenColor,
-          chartRedColor,
-        ],
-        borderColor: [
-          backgroundColor,
-          backgroundColor,
-        ],
-        borderWidth: 2,
+        backgroundColor: [ chartGreenColor, chartRedColor ],
+        borderColor: [ backgroundColor, backgroundColor ],
+        borderWidth: 1.5,
       },
     ],
     responsive: true,

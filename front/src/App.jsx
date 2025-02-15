@@ -13,8 +13,6 @@ function App() {
   const [period, setPeriod] = useState('');
   const [ratio, setRatio] = useState(periods.reduce((acc, period) => { acc[period] = 50; return acc }, {}));
   const [trades, setTrades] = useState([0, 0, 0, 0, 0, 0]);
-  // const [startTime, setStartTime] = useState('X');
-  // const initStartTime = () => setStartTime(new Date().toLocaleString("ko-KR", { timeZone: "Asia/Seoul" }));
 
   // 다크모드 토글
   const toggleDarkMode = () => {
@@ -46,7 +44,6 @@ function App() {
       const data = await response.json();
       if (response.ok) {
         setTrades(data);
-        // initStartTime();
       } else {
         if (response.status === 404) {
           console.error(data.error, response.status);
@@ -72,7 +69,6 @@ function App() {
     socket.onopen = () => {
       console.log('WebSocket 연결 성공');
       setTrades([0, 0, 0, 0, 0, 0]);
-      // initStartTime()
     };
     // 메시지 수신
     socket.onmessage = (event) => {
@@ -111,7 +107,6 @@ function App() {
           {isDark ? <MoonIcon /> : <SunIcon />}
         </div>
       </div>
-      {/* <div className='mr-auto text-xs'>연결: {startTime}</div> */}
       {/* 시간별 */}
       <h1 className="ml-10 mt-8 font-bold text-left text-lg sm:mt-10 sm:text-xl">시간별</h1>
       <div className='px-2 sm:px-10 grid grid-cols-3 sm:grid-cols-6 gap-x-1 place-items-center'>
