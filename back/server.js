@@ -206,13 +206,21 @@ const getAggregationData = async (period) => {
   };
 }
 
+// WebSocket heartbeat
+function heartbeat() {
+  this.isAlive = true;
+}
 
 // 웹소켓 클라이언트 관리
 wss.on('connection', async (ws) => {
   if (clients.size > 15) {
-    clients.clear();
-    console.log('The clients has been cleared.');
+    console.log("Connection rejected");
+    ws.close();
+    return;
   }
+
+  ws.isAlive = true;
+  ws.on('pong', heartbeat);
 
   clients.add(ws);
   console.log('The client is connected.');
@@ -269,13 +277,14 @@ const watchFutureTrades = async () => {
       while (true) {
         const trades = await bssocket.watchTrades(symbol);
         aggregateTrades(trades);
-        if (batchDataCount >= 3) {
+        if (batchDataCount >= 5) {
           const data = {flag: 1, data: [...batchDataSocket]};
           batchDataCount = 0;
           batchDataSocket = [0, 0, 0, 0, 0, 0];
+          const message = JSON.stringify(data);
           clients.forEach((client) => {
             if (client.readyState === WebSocket.OPEN) {
-              client.send(JSON.stringify(data));
+              client.send(message);
             }
           });
         }
@@ -326,3 +335,21 @@ const saveTradeData = async () => {
   }
 }
 saveTradeData();
+
+// 60초마다 핑 보내서 유령 연결 ghost connection 제거
+setInterval(() => {
+  clients.forEach((ws) => {
+    if (ws.readyState !== WebSocket.OPEN) {
+      clients.delete(ws);
+      return;
+    }
+
+    if (!ws.isAlive) {
+      clients.delete(ws);
+      return ws.terminate();
+    }
+
+    ws.isAlive = false;
+    ws.ping();
+  });
+}, 300000);

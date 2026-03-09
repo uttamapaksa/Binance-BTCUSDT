@@ -148,3 +148,6 @@ dist
 # AWS Production
 *.pem
 *.zip
+
+# ETC
+*.idea
