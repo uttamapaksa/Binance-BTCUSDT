@@ -4,14 +4,15 @@ import BarChart from './components/bar-chart';
 import { MoonIcon, SunIcon } from './components/icons';
 import './App.css'
 
-const SERVEL_URL = import.meta.env.VITE_SERVEL_URL;
+const SERVER_URL = import.meta.env.VITE_SERVER_URL;
 const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL;
 const periods = ['30m', '1h', '2h', '4h', '12h', '1d'];
+const createInitialRatio = () => periods.reduce((acc, p) => { acc[p] = 50; return acc; }, {});
 
 function App() {
   const [isDark, setIsDark] = useState(false);
-  const [period, setPeriod] = useState('');
-  const [ratio, setRatio] = useState(periods.reduce((acc, period) => { acc[period] = 50; return acc }, {}));
+  const [period, setPeriod] = useState(periods[0]);
+  const [ratio, setRatio] = useState(createInitialRatio);
   const [trades, setTrades] = useState([0, 0, 0, 0, 0, 0]);
 
   // 다크모드 토글
@@ -36,9 +37,8 @@ function App() {
 
   // 데이터 조회
   const getAggregationData = async () => {
-    if (period === '') return;
     try {
-      const response = await fetch(`${SERVEL_URL}/aggregation-data/${period}`, {
+      const response = await fetch(`${SERVER_URL}/aggregation-data/${period}`, {
         method: 'GET',
       });
       const data = await response.json();
@@ -117,6 +117,7 @@ function App() {
       {/* 거래량별 */}
       <h1 className="ml-10 mt-12 font-bold text-left text-lg sm:text-xl">거래량별</h1>
       <select
+        value={period}
         onChange={(e) => setPeriod(e.target.value)}
         className='ml-auto py-1 px-2 border border-gray-400 rounded-sm bg-gray-50 dark:bg-gray-900'
       >
