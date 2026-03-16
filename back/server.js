@@ -2,10 +2,11 @@
 // 선언부
 // -------------------------------------------------
 
-// Environment Variables
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
+
+const PORT = process.env.PORT || 8080;
 const DB_USERNAME = process.env.DB_USERNAME;
 const DB_PASSWORD = process.env.DB_PASSWORD;
 const DB_APP_NAME = process.env.DB_APP_NAME;
@@ -20,49 +21,83 @@ const express = require('express');
 const app = express();
 
 // CORS, Custom Header
-app.use('/aggregation-data', (req, res, next) => {
-  const customHeader = req.get('CloudFront-Custom-Header');
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return cors({
+      origin: allowedOrigins,
+      methods: ['OPTIONS'],
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Custom-Header'],
+    })(req, res, next);
+  }
+
+  const customHeader = req.get('X-Custom-Header');
   if (customHeader === CUSTOM_HEADER) {
-    cors({
+    return cors({
       origin: allowedOrigins,
       methods: ['GET'],
-      allowedHeaders: ['Content-Type', 'Authorization', 'CloudFront-Custom-Header'],
-      credentials: true,
+      allowedHeaders: ['Content-Type', 'Authorization', 'X-Custom-Header'],
     })(req, res, next);
   } else {
-    res.status(403).send('Forbidden');
+    return res.status(403).send('Forbidden');
+  }
+});
+
+// 기간별 거래량별 조회 API
+app.get(`/aggregation-data/:period`, async (req, res) => {
+  const { period } = req.params; 
+  if (!periods.includes(period)) {
+    return res.status(400).json({error: 'The requested period is not valid.'});
+  }
+  try {
+    const data = await getAggregationData(period);
+    if (data) {
+      res.json(data);  // 성공적인 응답
+    } else {
+      res.status(404).json({ error: 'No period data available.' });
+    }
+  } catch (error) {
+    res.status(500).json({ error: 'Period data error.' });
+  }
+});
+
+// 기간별 롱/숏 비율 조회 API
+app.get('/taker-long-short-ratio', async (req, res) => {
+  try {
+    const data = await fetchTakerLongShortRatio();
+    res.json(data);
+  } catch (error) {
+    console.error('taker-long-short-ratio error:', error);
+    res.status(500).json({ error: 'Ratio data error.' });
   }
 });
 
 // 지정된 포트에서 서버 실행
-const PORT = 8080;
-const server = app.listen(PORT, () => {
+app.listen(PORT, () => {
   console.log(`Server is running!`);
 });
 
 // Websocket
-const WebSocket = require('ws');
-const wss = new WebSocket.Server({ 
-  server,
-  verifyClient: (info, done) => {
-    const origin = info.origin;
-    if (allowedOrigins.includes(origin)) {
-      done(true);
-    } else {
-      done(false, 403, 'Forbidden');
-    }
-  }
-});
-
+// const WebSocket = require('ws');
+// const wss = new WebSocket.Server({ 
+//   server,
+//   verifyClient: (info, done) => {
+//     const origin = info.origin;
+//     if (allowedOrigins.includes(origin)) {
+//       done(true);
+//     } else {
+//       done(false, 403, 'Forbidden');
+//     }
+//   }
+// });
 
 // MongoDB
 const mongoose = require('mongoose');
-const mongoURI = `mongodb+srv://${DB_USERNAME}:${DB_PASSWORD}@${DB_APP_NAME}.miw8w.mongodb.net/?retryWrites=true&w=majority&appName=${DB_APP_NAME}`;
+const mongoURI = `mongodb+srv://${DB_USERNAME}:${DB_PASSWORD}@${DB_APP_NAME}.9rzwg5j.mongodb.net/?retryWrites=true&w=majority&appName=${DB_APP_NAME}`;
 mongoose.connect(mongoURI)  // DB connection
   .then(() => console.log('MongoDB is connected.'))
   .catch((err) => console.log('MongoDB connection error:', err));
 const tradeDataSchema = new mongoose.Schema({  // schema
-  tradeTime: { type: Date, default: Date.now, index: true, expires: 259200 },  // TTL: 3 days
+  tradeTime: { type: Date, default: Date.now, index: true, expires: 86400 },  // TTL: 1 days
   data: [Number],
 });
 const TradeData = mongoose.model('TradeData', tradeDataSchema);
@@ -76,7 +111,7 @@ const bssocket = new ccxtpro.binance({
   }
 })
 const symbol = 'BTC/USDT';
-const clients = new Set();
+// const clients = new Set();
 
 // batch updated data
 let batchDataCount = 0;
@@ -146,8 +181,9 @@ const fetchTakerLongShortRatio = async () => {
   const promises = periods.map(async (period) => {
     try {
       const data = await getAggregationData(period);
+      // [100$ sell, 1000$ sell, 1000$ 이상 sell, 100$ buy, 1000$ buy, 1000$ 이상 buy]
       if (data) {
-        const sh = data[0] + data[2] + data[4]; 
+        const sh = data[0] + data[2] + data[4];
         const lo = data[1] + data[3] + data[5]; 
         const ratio = ((lo / (sh + lo)) * 100) | 0;
         return{ period, data: ratio };
@@ -165,7 +201,8 @@ const fetchTakerLongShortRatio = async () => {
     data[result.period] = result.data;
   });
   
-  return {flag: 0, data};
+  // return {flag: 0, data};
+  return { data };
 };
 
 
@@ -206,64 +243,46 @@ const getAggregationData = async (period) => {
   };
 }
 
+
 // WebSocket heartbeat
-function heartbeat() {
-  this.isAlive = true;
-}
+// function heartbeat() {
+//   this.isAlive = true;
+// }
 
 // 웹소켓 클라이언트 관리
-wss.on('connection', async (ws) => {
-  if (clients.size > 15) {
-    console.log("Connection rejected");
-    ws.close();
-    return;
-  }
+// wss.on('connection', async (ws) => {
+//   if (clients.size > 15) {
+//     console.log("Connection rejected");
+//     ws.close();
+//     return;
+//   }
 
-  ws.isAlive = true;
-  ws.on('pong', heartbeat);
+//   ws.isAlive = true;
+//   ws.on('pong', heartbeat);
 
-  clients.add(ws);
-  console.log('The client is connected.');
-  const data = await fetchTakerLongShortRatio();
-  if (ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify(data));
-  };
+//   clients.add(ws);
+//   console.log('The client is connected.');
+//   const data = await fetchTakerLongShortRatio();
+//   if (ws.readyState === WebSocket.OPEN) {
+//     ws.send(JSON.stringify(data));
+//   };
   
-  ws.on('close', () => {
-    clients.delete(ws);
-    console.log('The client is disconnected.');
-  });
+//   ws.on('close', () => {
+//     clients.delete(ws);
+//     console.log('The client is disconnected.');
+//   });
   
-  ws.on('error', (err) => {
-    clients.delete(ws);
-    console.error('A websocket error occurred.', err);
-  });
-});
+//   ws.on('error', (err) => {
+//     clients.delete(ws);
+//     console.error('A websocket error occurred.', err);
+//   });
+// });
 
 
 
 // -------------------------------------------------
 // 실행부
 // -------------------------------------------------
-
-// 조회 API
-app.get(`/aggregation-data/:period`, async (req, res) => {
-  const { period } = req.params; 
-  if (!periods.includes(period)) {
-    return res.status(400).json({error: 'The requested period is not valid.'});
-  }
-  try {
-    const data = await getAggregationData(period);
-    if (data) {
-      res.json(data);  // 성공적인 응답
-    } else {
-      res.status(404).json({ error: 'No period data available.' });
-    }
-  } catch (error) {
-    res.status(500).json({ error: 'Period data error.' });
-  }
-});
-
 
 // 실시간으로 CCXT 라이브러리 선물 거래 데이터 수신
 const watchFutureTrades = async () => {
@@ -277,17 +296,17 @@ const watchFutureTrades = async () => {
       while (true) {
         const trades = await bssocket.watchTrades(symbol);
         aggregateTrades(trades);
-        if (batchDataCount >= 5) {
-          const data = {flag: 1, data: [...batchDataSocket]};
-          batchDataCount = 0;
-          batchDataSocket = [0, 0, 0, 0, 0, 0];
-          const message = JSON.stringify(data);
-          clients.forEach((client) => {
-            if (client.readyState === WebSocket.OPEN) {
-              client.send(message);
-            }
-          });
-        }
+        // if (batchDataCount >= 5) {
+        //   const data = {flag: 1, data: [...batchDataSocket]};
+        //   batchDataCount = 0;
+        //   batchDataSocket = [0, 0, 0, 0, 0, 0];
+        //   const message = JSON.stringify(data);
+        //   clients.forEach((client) => {
+        //     if (client.readyState === WebSocket.OPEN) {
+        //       client.send(message);
+        //     }
+        //   });
+        // }
       }
     } catch (e) {
       console.error('CCXT Library Error. Please retry in 30 seconds.', e, new Date(Date.now()));
@@ -299,24 +318,24 @@ watchFutureTrades();
 
 
 // 5분마다 기간별 롱/숏 비율을 프론트엔드에 전송
-const sendTakerLongShortRatio = async () =>{
-  try {
-    const data = await fetchTakerLongShortRatio();
-    clients.forEach((client) => {
-      if (client.readyState === WebSocket.OPEN) {
-        client.send(JSON.stringify(data));
-    }});
-    console.log('Sent successfully!');
-  } catch (err) {
-    console.error('Send failed:', err);
-  } finally {
-    setTimeout(sendTakerLongShortRatio, 300000);
-  }
-}
-sendTakerLongShortRatio();
+// const sendTakerLongShortRatio = async () =>{
+//   try {
+//     const data = await fetchTakerLongShortRatio();
+//     clients.forEach((client) => {
+//       if (client.readyState === WebSocket.OPEN) {
+//         client.send(JSON.stringify(data));
+//     }});
+//     console.log('Sent successfully!');
+//   } catch (err) {
+//     console.error('Send failed:', err);
+//   } finally {
+//     setTimeout(sendTakerLongShortRatio, 300000);
+//   }
+// }
+// sendTakerLongShortRatio();
 
 
-// 1분마다 거래 데이터를 MongoDB에 저장
+// 2분마다 거래 데이터를 MongoDB에 저장
 const saveTradeData = async () => {
   try {
     const data = [...batchDataMongo];
@@ -331,25 +350,26 @@ const saveTradeData = async () => {
   } catch (err) {
     console.error('Insert failed:', err);
   } finally {
-    setTimeout(saveTradeData, 60000);
+    setTimeout(saveTradeData, 120000);
   }
 }
 saveTradeData();
 
+
 // 60초마다 핑 보내서 유령 연결 ghost connection 제거
-setInterval(() => {
-  clients.forEach((ws) => {
-    if (ws.readyState !== WebSocket.OPEN) {
-      clients.delete(ws);
-      return;
-    }
+// setInterval(() => {
+//   clients.forEach((ws) => {
+//     if (ws.readyState !== WebSocket.OPEN) {
+//       clients.delete(ws);
+//       return;
+//     }
 
-    if (!ws.isAlive) {
-      clients.delete(ws);
-      return ws.terminate();
-    }
+//     if (!ws.isAlive) {
+//       clients.delete(ws);
+//       return ws.terminate();
+//     }
 
-    ws.isAlive = false;
-    ws.ping();
-  });
-}, 300000);
+//     ws.isAlive = false;
+//     ws.ping();
+//   });
+// }, 300000);

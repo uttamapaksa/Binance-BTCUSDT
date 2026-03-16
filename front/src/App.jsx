@@ -4,8 +4,8 @@ import BarChart from './components/bar-chart';
 import { MoonIcon, SunIcon } from './components/icons';
 import './App.css'
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL;
-const WEBSOCKET_URL = import.meta.env.VITE_WEBSOCKET_URL;
+const API_URL = import.meta.env.VITE_API_URL; 
+const X_CUSTOM_HEADER = import.meta.env.VITE_CUSTOM_HEADER;
 const periods = ['30m', '1h', '2h', '4h', '12h', '1d'];
 const createInitialRatio = () => periods.reduce((acc, p) => { acc[p] = 50; return acc; }, {});
 
@@ -30,16 +30,12 @@ function App() {
     })
   }
 
-  useEffect(() => {
-    const newDark = localStorage.getItem('theme') === 'dark';
-    setIsDark(newDark);
-  }, [])
-
-  // 데이터 조회
+  // 거래량별 데이터 조회
   const getAggregationData = async () => {
     try {
-      const response = await fetch(`${SERVER_URL}/aggregation-data/${period}`, {
+      const response = await fetch(`${API_URL}/aggregation-data/${period}`, {
         method: 'GET',
+        headers: { 'X-Custom-Header': X_CUSTOM_HEADER },
       });
       const data = await response.json();
       if (response.ok) {
@@ -58,45 +54,141 @@ function App() {
     }
   };
 
+  // 기간별 롱/숏 비율 조회
+  const getRatioData = async () => {
+    try {
+      const response = await fetch(`${API_URL}/taker-long-short-ratio`, {
+        method: 'GET',
+        headers: { 'X-Custom-Header': X_CUSTOM_HEADER },
+      });
+      const data = await response.json();
+      if (response.ok) {
+        setRatio(periods.reduce((acc, p) => {
+          acc[p] = data[p] ?? 0; // 값 없으면 0으로 기본값
+          return acc;
+        }, {}));
+      } else {
+        console.error('기간별 롱/숏 비율 조회 오류:', response.status, data.error);
+      }
+    } catch (error) {
+      console.error('기간별 롱/숏 비율 요청 오류.', error);
+    }
+  };
+
+
+  // 다크모드 토글
+  useEffect(() => {
+    const newDark = localStorage.getItem('theme') === 'dark';
+    setIsDark(newDark);
+  }, [])
+
+  // 거래량별 데이터 조회
   useEffect(() => {
     getAggregationData();
   }, [period]);
 
-  // 웹소켓
+  // 기간별 롱/숏 비율 조회
   useEffect(() => {
-    const socket = new WebSocket(`${WEBSOCKET_URL}`);
-    // 웹소켓 연결
+    getRatioData(); // 최초 1회
+    const intervalId = setInterval(() => {
+      getRatioData();
+    }, 300000); // 5분
+
+    return () => clearInterval(intervalId);
+  }, []);
+  
+  // BTCUSDT 선물 trade 스트림
+  useEffect(() => {
+    const wsUrl = 'wss://fstream.binance.com/stream?streams=btcusdt@trade';
+    const socket = new WebSocket(wsUrl);
+  
     socket.onopen = () => {
-      console.log('WebSocket 연결 성공');
+      console.log('Binance WS connected');
       setTrades([0, 0, 0, 0, 0, 0]);
     };
-    // 메시지 수신
+  
     socket.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.flag === 1) {  // watchFutureTrades()
-        setTrades((prev) => {
-          const next = [...prev];
-          for (let i=0; i<6; i++) {
-            next[i] += data.data[i];
+      const msg = JSON.parse(event.data);
+      // 바이낸스 futures aggregate trade/individual trade 포맷에 맞게 파싱
+      // 아래는 예시용 (실제 필드는 바이낸스 문서 참고)
+      const trade = msg.data; // { p: price, q: qty, m: isBuyerMarketMaker ... }
+  
+      // 예시로 quoteVolume(= price * qty)와 side 판별
+      const price = parseFloat(trade.p);
+      const qty = parseFloat(trade.q);
+      const quote = price * qty; // USDT 기준
+      const usdtk = (quote / 1000) | 0;
+      if (usdtk < 10) return; // 10K 미만 필터링
+  
+      const isSell = trade.m === true; // maker가 sell이면 taker는 buy (정확한 side 로직은 정책대로)
+  
+      setTrades((prev) => {
+        const next = [...prev];
+        if (isSell) {
+          if (usdtk < 100) {
+            next[0] += usdtk;
+          } else if (usdtk < 1000) {
+            next[2] += usdtk;
+          } else {
+            next[4] += usdtk;
           }
-          return next;
-        });
-      } else if (data.flag === 0) {  // fetchTakerLongShortRatio()
-        setRatio(periods.reduce((acc, period) => {
-          acc[period] = data.data[period];
-          return acc 
-        }, {}));
-      }
+        } else {
+          if (usdtk < 100) {
+            next[1] += usdtk;
+          } else if (usdtk < 1000) {
+            next[3] += usdtk;
+          } else {
+            next[5] += usdtk;
+          }
+        }
+        return next;
+      });
     };
     // 연결 에러
     socket.onerror = (error) => {
-      console.error('WebSocket Error:', error);
+      console.error('Binance WS error:', error);
     };
     // 언마운트 시 웹소켓 종료
     return () => {
       socket.close();
     };
   }, []);
+  
+  // 웹소켓
+  // useEffect(() => {
+  //   const socket = new WebSocket(`${WEBSOCKET_URL}`);
+  //   // 웹소켓 연결
+  //   socket.onopen = () => {
+  //     console.log('WebSocket 연결 성공');
+  //     setTrades([0, 0, 0, 0, 0, 0]);
+  //   };
+  //   // 메시지 수신
+  //   socket.onmessage = (event) => {
+  //     const data = JSON.parse(event.data);
+  //     if (data.flag === 1) {  // watchFutureTrades()
+  //       setTrades((prev) => {
+  //         const next = [...prev];
+  //         for (let i=0; i<6; i++) {
+  //           next[i] += data.data[i];
+  //         }
+  //         return next;
+  //       });
+  //     } else if (data.flag === 0) {  // fetchTakerLongShortRatio()
+  //       setRatio(periods.reduce((acc, period) => {
+  //         acc[period] = data.data[period];
+  //         return acc 
+  //       }, {}));
+  //     }
+  //   };
+  //   // 연결 에러
+  //   socket.onerror = (error) => {
+  //     console.error('WebSocket Error:', error);
+  //   };
+  //   // 언마운트 시 웹소켓 종료
+  //   return () => {
+  //     socket.close();
+  //   };
+  // }, []);
 
   return (
     <div className='flex flex-col'>
