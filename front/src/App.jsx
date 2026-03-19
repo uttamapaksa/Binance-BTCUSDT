@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import DoughnutChart from './components/doughnut-chart';
 import BarChart from './components/bar-chart';
 import { MoonIcon, SunIcon } from './components/icons';
@@ -14,6 +14,7 @@ function App() {
   const [period, setPeriod] = useState(periods[0]);
   const [ratio, setRatio] = useState(createInitialRatio);
   const [trades, setTrades] = useState([0, 0, 0, 0, 0, 0]);
+  const batchTrades = useRef([0, 0, 0, 0, 0, 0]);
 
   // 다크모드 토글
   const toggleDarkMode = () => {
@@ -64,7 +65,7 @@ function App() {
       const data = await response.json();
       if (response.ok) {
         setRatio(periods.reduce((acc, p) => {
-          acc[p] = data[p] ?? 0; // 값 없으면 0으로 기본값
+          acc[p] = data[p] ?? 50; // 값 없으면 0으로 기본값
           return acc;
         }, {}));
       } else {
@@ -75,28 +76,41 @@ function App() {
     }
   };
 
-
-  // 다크모드 토글
   useEffect(() => {
+    // 1. 다크모드
     const newDark = localStorage.getItem('theme') === 'dark';
     setIsDark(newDark);
-  }, [])
+
+    // 2. 기간별 롱/숏 비율
+    getRatioData(); // 최초 1회
+    const longShortRatioIntervalId = setInterval(() => {
+      getRatioData();
+    }, 300000); // 5분
+    
+    // 3. 거래량별 데이터 SetState 처리
+    const setTradeDataIntervalId = setInterval(() => {
+      if (batchTrades.current.reduce((a, c) => a + c, 0) === 0) return;
+      setTrades((prev) => {
+        const next = [...prev];
+        for (let i=0; i<6; i++) {
+          next[i] += batchTrades.current[i];
+        }
+        batchTrades.current = [0, 0, 0, 0, 0, 0];
+        return next;
+      });
+    }, 2000); // 2초
+    
+    return () => {
+      clearInterval(longShortRatioIntervalId);
+      clearInterval(setTradeDataIntervalId);
+    }
+  }, []);
 
   // 거래량별 데이터 조회
   useEffect(() => {
     getAggregationData();
   }, [period]);
 
-  // 기간별 롱/숏 비율 조회
-  useEffect(() => {
-    getRatioData(); // 최초 1회
-    const intervalId = setInterval(() => {
-      getRatioData();
-    }, 300000); // 5분
-
-    return () => clearInterval(intervalId);
-  }, []);
-  
   // BTCUSDT 선물 trade 스트림
   useEffect(() => {
     const wsUrl = 'wss://fstream.binance.com/stream?streams=btcusdt@trade';
@@ -112,7 +126,6 @@ function App() {
       // 바이낸스 futures aggregate trade/individual trade 포맷에 맞게 파싱
       // 아래는 예시용 (실제 필드는 바이낸스 문서 참고)
       const trade = msg.data; // { p: price, q: qty, m: isBuyerMarketMaker ... }
-  
       // 예시로 quoteVolume(= price * qty)와 side 판별
       const price = parseFloat(trade.p);
       const qty = parseFloat(trade.q);
@@ -121,28 +134,23 @@ function App() {
       if (usdtk < 10) return; // 10K 미만 필터링
   
       const isSell = trade.m === true; // maker가 sell이면 taker는 buy (정확한 side 로직은 정책대로)
-  
-      setTrades((prev) => {
-        const next = [...prev];
-        if (isSell) {
-          if (usdtk < 100) {
-            next[0] += usdtk;
-          } else if (usdtk < 1000) {
-            next[2] += usdtk;
-          } else {
-            next[4] += usdtk;
-          }
+      if (isSell) {
+        if (usdtk < 100) {
+          batchTrades.current[0] += usdtk;
+        } else if (usdtk < 1000) {
+          batchTrades.current[2] += usdtk;
         } else {
-          if (usdtk < 100) {
-            next[1] += usdtk;
-          } else if (usdtk < 1000) {
-            next[3] += usdtk;
-          } else {
-            next[5] += usdtk;
-          }
+          batchTrades.current[4] += usdtk;
         }
-        return next;
-      });
+      } else {
+        if (usdtk < 100) {
+          batchTrades.current[1] += usdtk;
+        } else if (usdtk < 1000) {
+          batchTrades.current[3] += usdtk;
+        } else {
+          batchTrades.current[5] += usdtk;
+        }
+      }
     };
     // 연결 에러
     socket.onerror = (error) => {

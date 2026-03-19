@@ -202,7 +202,7 @@ const fetchTakerLongShortRatio = async () => {
   });
   
   // return {flag: 0, data};
-  return { data };
+  return data;
 };
 
 
@@ -335,7 +335,7 @@ watchFutureTrades();
 // sendTakerLongShortRatio();
 
 
-// 2분마다 거래 데이터를 MongoDB에 저장
+// 3분마다 거래 데이터를 MongoDB에 저장
 const saveTradeData = async () => {
   try {
     const data = [...batchDataMongo];
@@ -350,7 +350,7 @@ const saveTradeData = async () => {
   } catch (err) {
     console.error('Insert failed:', err);
   } finally {
-    setTimeout(saveTradeData, 120000);
+    setTimeout(saveTradeData, 180000);
   }
 }
 saveTradeData();
