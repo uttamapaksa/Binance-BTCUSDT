@@ -15,6 +15,7 @@ function App() {
   const [ratio, setRatio] = useState(createInitialRatio);
   const [trades, setTrades] = useState([0, 0, 0, 0, 0, 0]);
   const batchTrades = useRef([0, 0, 0, 0, 0, 0]);
+  const [isTradesLoading, setIsTradesLoading] = useState(false);
 
   // 다크모드 토글
   const toggleDarkMode = () => {
@@ -33,6 +34,7 @@ function App() {
 
   // 거래량별 데이터 조회
   const getAggregationData = async () => {
+    setIsTradesLoading(true);
     try {
       const response = await fetch(`${API_URL}/aggregation-data/${period}`, {
         method: 'GET',
@@ -52,6 +54,8 @@ function App() {
       }
     } catch (error) {
       console.error("요청 실패.", error);
+    } finally {
+      setIsTradesLoading(false);
     }
   };
 
@@ -225,7 +229,7 @@ function App() {
           <option key={period} value={period} className='dark:bg-gray-900'>{period}</option>
         ))}
       </select>
-      <div className='mt-3 sm:mt-5 h-92'>
+      <div className={`mt-3 sm:mt-5 h-92 transition ${isTradesLoading && 'opacity-90 blur-xs'}`}>
         <BarChart trades={trades} />
       </div>
     </div>
