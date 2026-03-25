@@ -102,7 +102,7 @@ function App() {
         batchTrades.current = [0, 0, 0, 0, 0, 0];
         return next;
       });
-    }, 2000); // 2초
+    }, 1000); // 1초
     
     return () => {
       clearInterval(longShortRatioIntervalId);
