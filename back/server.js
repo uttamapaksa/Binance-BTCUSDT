@@ -145,8 +145,8 @@ const toMilliSeconds = (timeStr) => {
 const aggregateTrades = (trades) => {
   for (const trade of trades) {
     const { cost, side, amount } = trade;
+    if (cost < 10000) continue; // 10K($) 미만 필터링
     const usdtk = (cost / 1000) | 0;
-    if (usdtk < 10) continue;  // 10K($) 미만 필터링
     batchDataCount++;
     if (side === 'sell') {
       if (usdtk < 100) {
@@ -210,10 +210,11 @@ const fetchTakerLongShortRatio = async () => {
 const getAggregationData = async (period) => {
   const timeAgo = toMilliSeconds(period);
   try {
+    const startTime = new Date(Date.now() - timeAgo);
     const result = await TradeData.aggregate([
       {
         $match: {
-          tradeTime: { $gte: new Date(Date.now() - parseInt(timeAgo)) }
+          tradeTime: { $gte: startTime }
         }
       },
       {
@@ -289,13 +290,15 @@ const watchFutureTrades = async () => {
   while (true) {
     if (!bssocket.has['watchTrades']) {
       console.error('The watchTrades() feature is not supported. Please retry in 15 seconds.');
-      await new Promise((resolve) => setTimeout(resolve, 60000));  // 1분 대기
+      await new Promise((resolve) => setTimeout(resolve, 120000));  // 2분 대기
       continue; 
     }
     try {
       while (true) {
         const trades = await bssocket.watchTrades(symbol);
         aggregateTrades(trades);
+        // 리소스 절약을 위한 0.2초 휴식
+        await new Promise(resolve => setTimeout(resolve, 200));
         // if (batchDataCount >= 5) {
         //   const data = {flag: 1, data: [...batchDataSocket]};
         //   batchDataCount = 0;
@@ -310,7 +313,7 @@ const watchFutureTrades = async () => {
       }
     } catch (e) {
       console.error('CCXT Library Error. Please retry in 30 seconds.', e, new Date(Date.now()));
-      await new Promise((resolve) => setTimeout(resolve, 60000));  // 1분 대기
+      await new Promise((resolve) => setTimeout(resolve, 120000));  // 2분 대기
     }
   }
 };
@@ -335,7 +338,7 @@ watchFutureTrades();
 // sendTakerLongShortRatio();
 
 
-// 3분마다 거래 데이터를 MongoDB에 저장
+// 5분마다 거래 데이터를 MongoDB에 저장
 const saveTradeData = async () => {
   try {
     const data = [...batchDataMongo];
@@ -345,12 +348,12 @@ const saveTradeData = async () => {
     }
     const newTradeData = new TradeData({ data });
     await newTradeData.save();
-    batchDataMongo = [0, 0, 0, 0, 0, 0];
+    batchDataMongo.fill(0);
     console.log('Insert successful!');
   } catch (err) {
     console.error('Insert failed:', err);
   } finally {
-    setTimeout(saveTradeData, 180000);
+    setTimeout(saveTradeData, 300000);
   }
 }
 saveTradeData();
